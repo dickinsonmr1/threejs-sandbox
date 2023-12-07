@@ -1,6 +1,9 @@
 # threejs-sandbox
 sandbox for playing around with three.js 
 
+use the following to run the demo:
+npx vite
+
 installation:
 https://threejs.org/docs/#manual/en/introduction/Installation
 

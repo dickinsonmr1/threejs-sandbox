@@ -4,17 +4,33 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader'
 import Stats from 'three/addons/libs/stats.module.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as CANNON from 'cannon-es'
 
-
+// three.js variables
 let camera, scene, renderer, stats;
 let fbxVehicle;
 let glTfVehicle;
 let cube;
 
+// three.js representation of physics object
+let boxMesh;
+let cubeMesh;
+let floorMesh;
+
+// cannon.js variables
+let world;
+let boxBody;
+let physicsMaterial;
+let sphereShape;
+let sphereBody;
+let groundBody;
+
 if ( WebGL.isWebGLAvailable() ) {
 
 	// Initiate function or other initializations here
+    setupKeyControls();
     init();
+    initCannon();
 	animate();
 
 } else {
@@ -42,10 +58,13 @@ function init() {
     document.body.appendChild( renderer.domElement );
 
     // cube
-    const geometry = new THREE.BoxGeometry( 2, 2, 2 );
+    const geometry = new THREE.BoxGeometry( 10, 10, 10 );
     const material = new THREE.MeshBasicMaterial( { color: 0x00ff00 } );
     cube = new THREE.Mesh( geometry, material );
+    cube.position.set(-10, 30, -10);
     scene.add( cube );
+
+   
 
     // line
     const lineMaterial = new THREE.LineBasicMaterial( { color: 0x0000ff } );
@@ -70,10 +89,10 @@ function init() {
     // scene.add( new THREE.CameraHelper( dirLight.shadow.camera ) );
 
     // ground
-    const mesh = new THREE.Mesh( new THREE.PlaneGeometry( 2000, 2000 ), new THREE.MeshPhongMaterial( { color: 0x999999, depthWrite: false } ) );
-    mesh.rotation.x = - Math.PI / 2;
-    mesh.receiveShadow = true;
-    scene.add( mesh );
+    floorMesh = new THREE.Mesh( new THREE.PlaneGeometry( 2000, 2000 ), new THREE.MeshPhongMaterial( { color: 0x999999, depthWrite: false } ) );
+    floorMesh.rotation.x = - Math.PI / 2;
+    floorMesh.receiveShadow = true;
+    scene.add( floorMesh );
 
     const grid = new THREE.GridHelper( 2000, 20, 0x000000, 0x000000 );
     grid.material.opacity = 0.2;
@@ -86,6 +105,7 @@ function init() {
     //This work is based on "FREE 1975 Porsche 911 (930) Turbo" (https://sketchfab.com/3d-models/free-1975-porsche-911-930-turbo-8568d9d14a994b9cae59499f0dbed21e) by Karol Miklas (https://sketchfab.com/karolmiklas) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
     loader.load( 'dist/client/models/911Turbo/scene.gltf', function ( gltf ) {
         gltf.scene.scale.set(20, 20, 20);
+        gltf.scene.position.set(-200, 0, -200);
         scene.add( gltf.scene );
         glTfVehicle = gltf.scene;
 
@@ -122,6 +142,13 @@ function init() {
         }    
     )
 
+    // cannon cube
+    const cannonCubeGeometry = new THREE.BoxGeometry( 10, 10, 10 );
+    const cannonCubematerial = new THREE.MeshBasicMaterial( { color: 0xff0000, wireframe: true } );
+    cubeMesh = new THREE.Mesh( cannonCubeGeometry, cannonCubematerial );
+    cubeMesh.position.set(-10, 30, -10);
+    scene.add( cubeMesh );
+
     // stats
     stats = new Stats();
     container.appendChild( stats.dom );
@@ -132,16 +159,95 @@ function init() {
     
 }
 
+function initCannon() {
+    world = new CANNON.World({
+        gravity: new CANNON.Vec3(0, -9.81, 0)
+    });
+
+    /*
+    // Create a slippery material (friction coefficient = 0.0)
+    physicsMaterial = new CANNON.Material('physics')
+    const physics_physics = new CANNON.ContactMaterial(physicsMaterial, physicsMaterial, {
+        friction: 0.0,
+        restitution: 0.3,
+    })
+
+    // We must add the contact materials to the world
+    world.addContactMaterial(physics_physics)
+    */
+
+    // Box
+    boxBody = new CANNON.Body({
+      mass: 1,
+      shape: new CANNON.Box(new CANNON.Vec3(10, 10, 10)),
+      position: new CANNON.Vec3(1, 20, 1)
+    });
+    //boxBody.addShape(shape);
+    //body.angularVelocity.set(0, 10, 0);
+    //body.angularDamping = 0.5;
+    //body.velocity.setZero();
+    world.addBody(boxBody);
+
+    // Create the ground plane
+    //const groundShape = new CANNON.Plane()
+    groundBody = new CANNON.Body({ shape: new CANNON.Plane(), mass: 0 });//, material: physicsMaterial })
+    //groundBody.addShape(groundShape)
+    groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0)
+    world.addBody(groundBody)
+    
+    /*
+    // Create the user collision sphere
+    const radius = 1.3
+    sphereShape = new CANNON.Sphere(radius)
+    sphereBody = new CANNON.Body({ mass: 5, material: physicsMaterial })
+    sphereBody.addShape(sphereShape)
+    sphereBody.position.set(0, 5, 0)
+    sphereBody.linearDamping = 0.9
+    world.addBody(sphereBody)
+    */
+}
+
 function animate() {
 	requestAnimationFrame( animate );
 
-	cube.rotation.x += 0.01;
-	cube.rotation.y += 0.01;
+    // Step the physics world
+    world.fixedStep()
 
-    glTfVehicle.rotation.y -= 0.02;
+    // Copy coordinates from cannon.js to three.js
+    floorMesh.position.copy(groundBody.position);
+    floorMesh.quaternion.copy(groundBody.quaternion);
+
+    // Copy coordinates from cannon.js to three.js
+    cubeMesh.position.copy(boxBody.position)
+    cubeMesh.quaternion.copy(boxBody.quaternion)
+    
+	//cube.rotation.x += 0.01;
+	//cube.rotation.y += 0.01;
+
+    //glTfVehicle.rotation.y -= 0.02;
     fbxVehicle.rotation.z += 0.02;
 
     renderer.render( scene, camera );
 
     stats.update();
 }
+
+function setupKeyControls() {
+    //var cube = scene.getObjectByName('cube');
+    document.onkeydown = function(e) {
+      switch (e.keyCode) {
+        case 37:
+        glTfVehicle.position.x -= 1;
+        break;
+        case 38:
+        glTfVehicle.position.x += 1;
+        break;
+        case 39:
+        glTfVehicle.position.z -= 1;
+        break;
+        case 40:
+        glTfVehicle.position.z += 1;
+        break;
+      }
+    };
+  }
