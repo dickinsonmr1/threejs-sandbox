@@ -13,15 +13,14 @@ let glTfVehicle;
 let cube;
 
 // three.js representation of physics object
-let boxMesh;
 let cubeMesh;
 let floorMesh;
+let sphereMesh;
 
-// cannon.js variables
+// cannon variables
 let world;
 let boxBody;
 let physicsMaterial;
-let sphereShape;
 let sphereBody;
 let groundBody;
 
@@ -65,7 +64,6 @@ function init() {
     scene.add( cube );
 
    
-
     // line
     const lineMaterial = new THREE.LineBasicMaterial( { color: 0x0000ff } );
     const points = [];
@@ -142,12 +140,23 @@ function init() {
         }    
     )
 
-    // cannon cube
+    // cube to be synced with cannon body
     const cannonCubeGeometry = new THREE.BoxGeometry( 10, 10, 10 );
     const cannonCubematerial = new THREE.MeshBasicMaterial( { color: 0xff0000, wireframe: true } );
     cubeMesh = new THREE.Mesh( cannonCubeGeometry, cannonCubematerial );
     cubeMesh.position.set(-10, 30, -10);
     scene.add( cubeMesh );
+
+    // sphere to be synced with cannon body
+    sphereMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(2),
+        new THREE.MeshBasicMaterial({
+            color: 0x0000ff,
+            wireframe: true
+        })
+    );
+    sphereMesh.position.set(0, 15, 0);
+    scene.add(sphereMesh);
 
     // stats
     stats = new Stats();
@@ -195,6 +204,12 @@ function initCannon() {
     groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0)
     world.addBody(groundBody)
     
+    sphereBody = new CANNON.Body({
+        mass: 10,
+        shape: new CANNON.Sphere(2),
+        position: new CANNON.Vec3(0, 15, 0)
+    });
+    world.addBody(sphereBody);
     /*
     // Create the user collision sphere
     const radius = 1.3
@@ -220,6 +235,10 @@ function animate() {
     // Copy coordinates from cannon.js to three.js
     cubeMesh.position.copy(boxBody.position)
     cubeMesh.quaternion.copy(boxBody.quaternion)
+
+    // Copy coordinates from cannon.js to three.js
+    sphereMesh.position.copy(sphereBody.position);
+    sphereMesh.quaternion.copy(sphereBody.quaternion)
     
 	//cube.rotation.x += 0.01;
 	//cube.rotation.y += 0.01;
