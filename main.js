@@ -10,11 +10,11 @@ import * as CANNON from 'cannon-es'
 let camera, scene, renderer, stats;
 let fbxVehicle;
 let glTfVehicle;
-let cube;
+let nonPhysicsCube;
 
 // three.js representation of physics object
-let cubeMesh;
-let floorMesh;
+let boxMesh;
+let groundMesh;
 let sphereMesh;
 
 // cannon variables
@@ -23,6 +23,8 @@ let boxBody;
 let physicsMaterial;
 let sphereBody;
 let groundBody;
+
+// tutorial here: https://www.youtube.com/watch?v=TPKWohwHrbo
 
 if ( WebGL.isWebGLAvailable() ) {
 
@@ -56,13 +58,13 @@ function init() {
     renderer.setSize( window.innerWidth, window.innerHeight );
     document.body.appendChild( renderer.domElement );
 
-    // cube
-    const geometry = new THREE.BoxGeometry( 10, 10, 10 );
-    const material = new THREE.MeshBasicMaterial( { color: 0x00ff00 } );
-    cube = new THREE.Mesh( geometry, material );
-    cube.position.set(-10, 30, -10);
-    scene.add( cube );
-
+    // cube (no physics)
+    nonPhysicsCube = new THREE.Mesh(
+        new THREE.BoxGeometry( 10, 10, 10 ),
+        new THREE.MeshBasicMaterial( { color: 0x00ff00 })
+    );
+    nonPhysicsCube.position.set(-10, 30, -10);
+    scene.add( nonPhysicsCube );
    
     // line
     const lineMaterial = new THREE.LineBasicMaterial( { color: 0x0000ff } );
@@ -87,10 +89,18 @@ function init() {
     // scene.add( new THREE.CameraHelper( dirLight.shadow.camera ) );
 
     // ground
-    floorMesh = new THREE.Mesh( new THREE.PlaneGeometry( 2000, 2000 ), new THREE.MeshPhongMaterial( { color: 0x999999, depthWrite: false } ) );
-    floorMesh.rotation.x = - Math.PI / 2;
-    floorMesh.receiveShadow = true;
-    scene.add( floorMesh );
+    groundMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry( 2000, 2000 ),
+        //new THREE.MeshPhongMaterial( { color: 0x999999, depthWrite: false } 
+        new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            side: THREE.DoubleSide,
+            wireframe: true
+        })
+    );
+    groundMesh.rotation.x = - Math.PI / 2;
+    groundMesh.receiveShadow = true;
+    scene.add( groundMesh );
 
     const grid = new THREE.GridHelper( 2000, 20, 0x000000, 0x000000 );
     grid.material.opacity = 0.2;
@@ -141,15 +151,16 @@ function init() {
     )
 
     // cube to be synced with cannon body
-    const cannonCubeGeometry = new THREE.BoxGeometry( 10, 10, 10 );
-    const cannonCubematerial = new THREE.MeshBasicMaterial( { color: 0xff0000, wireframe: true } );
-    cubeMesh = new THREE.Mesh( cannonCubeGeometry, cannonCubematerial );
-    cubeMesh.position.set(-10, 30, -10);
-    scene.add( cubeMesh );
+    boxMesh = new THREE.Mesh(
+        new THREE.BoxGeometry( 10, 10, 10 ),
+        new THREE.MeshBasicMaterial( { color: 0xff0000, wireframe: true })
+    );
+    //boxMesh.position.set(-10, 30, -10);
+    scene.add( boxMesh );
 
     // sphere to be synced with cannon body
     sphereMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(2),
+        new THREE.SphereGeometry(10),
         new THREE.MeshBasicMaterial({
             color: 0x0000ff,
             wireframe: true
@@ -186,30 +197,56 @@ function initCannon() {
     */
 
     // Box
+    const boxPhysMat = new CANNON.Material();
     boxBody = new CANNON.Body({
       mass: 1,
       shape: new CANNON.Box(new CANNON.Vec3(10, 10, 10)),
-      position: new CANNON.Vec3(1, 20, 1)
+      position: new CANNON.Vec3(50, 20, 50),
+      angularVelocity: new CANNON.Vec3(0, 10, 0),
+      angularDamping: 0.5,
+      material: boxPhysMat
     });
-    //boxBody.addShape(shape);
-    //body.angularVelocity.set(0, 10, 0);
-    //body.angularDamping = 0.5;
-    //body.velocity.setZero();
     world.addBody(boxBody);
 
     // Create the ground plane
     //const groundShape = new CANNON.Plane()
-    groundBody = new CANNON.Body({ shape: new CANNON.Plane(), mass: 0 });//, material: physicsMaterial })
-    //groundBody.addShape(groundShape)
+    const groundPhysMat = new CANNON.Material();
+    groundBody = new CANNON.Body({
+        shape: new CANNON.Plane(),
+        type: CANNON.Body.STATIC,
+        material: groundPhysMat,
+        mass: 0
+    });
     groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0)
     world.addBody(groundBody)
+
+    const groundBoxContactMat = new CANNON.ContactMaterial(
+        groundPhysMat,
+        boxPhysMat,
+        {
+            friction: 0
+        }
+    );    
+    world.addContactMaterial(groundBoxContactMat);
     
+    const spherePhysMat = new CANNON.Material();
+
     sphereBody = new CANNON.Body({
         mass: 10,
-        shape: new CANNON.Sphere(2),
-        position: new CANNON.Vec3(0, 15, 0)
+        shape: new CANNON.Sphere(10),
+        position: new CANNON.Vec3(0, 20, 0),
+        linearDamping: 0.31,
+        material: spherePhysMat
     });
     world.addBody(sphereBody);
+
+    const groundSphereContactMat = new CANNON.ContactMaterial(
+        groundPhysMat,
+        spherePhysMat,
+        {restitution: 0.9}
+    );
+    world.addContactMaterial(groundSphereContactMat);
+
     /*
     // Create the user collision sphere
     const radius = 1.3
@@ -229,12 +266,12 @@ function animate() {
     world.fixedStep()
 
     // Copy coordinates from cannon.js to three.js
-    floorMesh.position.copy(groundBody.position);
-    floorMesh.quaternion.copy(groundBody.quaternion);
+    groundMesh.position.copy(groundBody.position);
+    groundMesh.quaternion.copy(groundBody.quaternion);
 
     // Copy coordinates from cannon.js to three.js
-    cubeMesh.position.copy(boxBody.position)
-    cubeMesh.quaternion.copy(boxBody.quaternion)
+    boxMesh.position.copy(boxBody.position)
+    boxMesh.quaternion.copy(boxBody.quaternion)
 
     // Copy coordinates from cannon.js to three.js
     sphereMesh.position.copy(sphereBody.position);
